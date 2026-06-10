@@ -251,6 +251,7 @@ function mapOrder(row){
          coords:(row.lat!=null?{lat:row.lat,lng:row.lng}:null),mapsLink:row.maps_link},
     horario:row.horario, nota:row.nota,
     quote:(row.total_quoted!=null?{price:row.total_quoted,napa:row.napa}:null),
+    facturaUrl:row.factura_url||null,
     feedback:(fb?{stars:fb.stars,text:fb.comment}:null),
     createdAt:row.created_at?new Date(row.created_at).getTime():Date.now()
   };
@@ -583,6 +584,16 @@ function quotingScreen(){
   </div>`;
 }
 
+/* ---------- bloque de factura (lo ve el cliente) ---------- */
+function facturaCard(o){
+  if(!o||!o.facturaUrl) return '';
+  return `<div class="card">
+    <h3 style="color:var(--gd)">📄 Factura del mercado</h3>
+    <p class="muted" style="font-size:13px">Detalle de los costos de cada producto. Toca la imagen para verla en grande.</p>
+    <a href="${o.facturaUrl}" target="_blank"><img src="${o.facturaUrl}" alt="Factura del pedido" style="width:100%;border-radius:12px;border:1px solid var(--bd);margin-top:6px"></a>
+  </div>`;
+}
+
 /* ---------- COTIZADO (aceptar/rechazar) ---------- */
 function quotedScreen(){
   const o=S.order;
@@ -596,6 +607,7 @@ function quotedScreen(){
       <div class="li"><span>🎁 Ñapa de cortesía</span><b>${esc(o.quote.napa||'Sorpresa de la casa')}</b></div>
       <div class="li"><span>Horario</span><span>${esc(o.horario)}</span></div>
     </div>
+    ${facturaCard(o)}
     <button class="btn btn-g" data-act="accept-quote">Estoy de acuerdo — pagar</button>
     <button class="btn btn-ghost" data-act="reject-quote" style="margin-top:10px">No, gracias (cancelar)</button>
   </div>`;
@@ -616,6 +628,7 @@ function payScreen(){
       <div class="demo">Tras verificar tu pago, el gestor aprueba el pedido y entra "en curso".</div>
       <button class="btn btn-or" data-act="mark-order-paid" style="margin-top:6px">Ya transferí — marcar como pagado</button>
     </div>
+    ${facturaCard(o)}
   </div>`;
 }
 
@@ -644,6 +657,7 @@ function trackScreen(){
       ${o.quote?`<div class="li"><span>Valor</span><b>${COP(o.quote.price)}</b></div><div class="li"><span>🎁 Ñapa</span><span>${esc(o.quote.napa||'Sorpresa')}</span></div>`:''}
       <div class="li"><span>Horario</span><span>${esc(o.horario)}</span></div>
     </div>
+    ${facturaCard(o)}
     <div class="card">
       <h3 style="color:var(--gd);margin-bottom:6px">Seguimiento</h3>
       ${steps.map(st=>{const si=order.indexOf(st.k);const done=ci>si;const cur=o.status===st.k||(st.k==='por_confirmar'&&o.status==='pagando');
