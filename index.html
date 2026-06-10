@@ -306,6 +306,7 @@ function render(){
     case'otp':html=otpScreen();break;
     case'register':html=registerScreen();break;
     case'home':html=homeScreen();break;
+    case'history':html=historyScreen();break;
     case'subscription':html=subScreen();break;
     case'catalog':html=catalogScreen();break;
     case'confirm':html=confirmScreen();break;
@@ -458,9 +459,29 @@ function homeScreen(){
         <button class="btn btn-or" data-act="go-sub">Comprar suscripción</button></div>`:''}
 
       ${orders.length?`<div class="card"><h3 style="color:var(--gd)">Mis pedidos</h3>
-        ${orders.slice(0,5).map(o=>`<div class="li"><span>${new Date(o.createdAt).toLocaleDateString('es-CO')} · ${statusLabel(o.status)}</span>
-        <a class="link" data-act="open-${o.id}">Ver</a></div>`).join('')}</div>`:''}
+        ${orders.slice(0,3).map(o=>`<div class="li"><span>${new Date(o.createdAt).toLocaleDateString('es-CO')} · ${statusLabel(o.status)}</span>
+        <a class="link" data-act="open-${o.id}">Ver</a></div>`).join('')}
+        <button class="btn btn-ghost btn-sm" data-act="history" style="margin-top:10px;width:100%">Ver todos mis pedidos (${orders.length}) →</button></div>`:''}
     </div>`;
+}
+
+/* ---------- HISTORIAL DE PEDIDOS ---------- */
+function historyScreen(){
+  const orders=userOrders(S.phone);
+  const pillClass=s=>s==='entregado'?'pill-ok':s==='en_curso'?'pill-warn':'pill-gray';
+  return header('Mis pedidos','Tu historial de mercados','back-home')+
+  `<div class="wrap">
+    ${orders.length?orders.map(o=>`<div class="card">
+      <div class="li" style="border:none;padding:0">
+        <span><b>${new Date(o.createdAt).toLocaleDateString('es-CO')}</b><br><span class="tiny">${o.items.length} producto${o.items.length===1?'':'s'}${o.quote?' · '+COP(o.quote.price):''}</span></span>
+        <span class="pill ${pillClass(o.status)}">${statusLabel(o.status)}</span>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="btn btn-ghost btn-sm" data-act="open-${o.id}" style="flex:1">Ver detalle</button>
+        <button class="btn btn-g btn-sm" data-act="reorder-${o.id}" style="flex:1">Volver a pedir</button>
+      </div>
+    </div>`).join(''):'<div class="card center"><div style="font-size:40px">🧺</div><p class="muted">Aún no tienes pedidos. ¡Haz tu primer mercado!</p></div>'}
+  </div>`;
 }
 
 /* ---------- SUSCRIPCIÓN ---------- */
@@ -719,6 +740,7 @@ function handle(act){
   if(act==='back-catalog'){loadCatalog();S.screen='catalog';return render();}
   if(act==='go-sub'||act==='subscription'){S.screen='subscription';return render();}
   if(act==='logout')return doLogout();
+  if(act==='history')return showHistory();
   if(act==='start-order'){
     loadCatalog();
     const u=currentUser();
@@ -746,6 +768,7 @@ function handle(act){
   if(act==='go-feedback'){S.screen='feedback';return render();}
   if(act==='send-feedback')return sendFeedback();
 
+  if(act.startsWith('reorder-'))return doReorder(act.slice(8));
   if(act.startsWith('open-')){const id=act.slice(5);S.order=data.orders.find(o=>o.id===id)||S.order;
     if(S.order.status==='cotizado')S.screen='quoted';else if(S.order.status==='pagando')S.screen='pay';else S.screen='track';return render();}
 }
@@ -840,6 +863,7 @@ async function sendOrder(){
     const itemRows=items.map(it=>({order_id:ins.id,producto:it.n,qty:it.qty,unidad:unitOf(it.n)}));
     await sb.from('order_items').insert(itemRows);
     if(!u.firstOrderUsed){ try{await sb.from('profiles').update({first_order_used:true}).eq('id',u.uid);}catch(e){} u.firstOrderUsed=true; }
+    await loadOrders();
     S.order=mapOrder({...ins,order_items:itemRows.map(r=>({producto:r.producto,qty:r.qty,unidad:r.unidad})),feedback:[]});
     S.cart={};S.altAddr=false;S.alt={};S.screen='quoting';
   }catch(e){alert('Error de conexión. Intenta de nuevo.');}
@@ -856,6 +880,21 @@ async function sendFeedback(){
   catch(e){ alert('No se pudo enviar tu opinión. Intenta de nuevo.'); return; }
   S.order.feedback={stars:v,text:txt};
   S.screen='track';render();
+}
+
+/* Ver historial: recarga los pedidos desde Supabase y muestra la lista */
+async function showHistory(){ await loadOrders(); S.screen='history'; render(); }
+/* Volver a pedir: carga al carrito los productos (aún disponibles) de un pedido pasado */
+function doReorder(id){
+  const o=data.orders.find(x=>x.id===id); if(!o)return;
+  const u=currentUser();
+  if(!activeSub(u)&&hasUsedFreeOrder(u)){S.screen='subscription';return render();}
+  loadCatalog();
+  const avail=new Set(); CATS.forEach(c=>CAT[c].forEach(p=>avail.add(p.n)));
+  S.cart={}; let missing=0;
+  o.items.forEach(it=>{ if(avail.has(it.n)) S.cart[it.n]=it.qty; else missing++; });
+  S.screen='catalog'; render();
+  if(missing) alert('Algunos productos de ese pedido ya no están disponibles, así que no se agregaron. Puedes ajustar tu lista en el catálogo.');
 }
 
 /* ---------- ARRANQUE ---------- */
