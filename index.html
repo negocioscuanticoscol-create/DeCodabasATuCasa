@@ -176,6 +176,22 @@ function loadCatalog(){
   CATS=Object.keys(CAT).filter(c=>CAT[c].length);
   if(!CATS.includes(S.cat))S.cat=CATS[0];
 }
+const CAT_ORDER=['🥦 Verduras','🍎 Frutas','🥤 Pulpas','🥩 Carnes','🥛 Lácteos'];
+/* Trae el catálogo real desde la tabla products de Supabase */
+async function syncCatalog(){
+  try{
+    const {data:rows,error}=await sb.from('products').select('categoria,nombre,unidad,activo').eq('activo',true).order('nombre');
+    if(error||!rows||!rows.length)return;            // si falla, se queda el catálogo por defecto
+    const cat={};
+    rows.forEach(r=>{const c=r.categoria||'Otros';(cat[c]=cat[c]||[]).push({n:r.nombre,u:r.unidad||'u',off:false});});
+    const ordered={};
+    CAT_ORDER.forEach(c=>{if(cat[c])ordered[c]=cat[c];});
+    Object.keys(cat).forEach(c=>{if(!ordered[c])ordered[c]=cat[c];});
+    data.catalog=ordered; loadCatalog(); render();
+  }catch(e){console.warn('catálogo:',e);}
+}
+/* Unidad de un producto (para guardar en order_items) */
+function unitOf(name){for(const c in data.catalog){const p=(data.catalog[c]||[]).find(x=>x.n===name);if(p)return p.u;}return '';}
 
 /* ---------- CONFIGURACIÓN DE NEGOCIO ---------- */
 const CFG={
@@ -221,6 +237,49 @@ function uid(){return 'P'+Date.now().toString(36)+Math.floor(Math.random()*900+1
 function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function localidadOptions(sel){return ['<option value="">Selecciona…</option>'].concat(LOCALIDADES.map(l=>`<option ${l===sel?'selected':''}>${l}</option>`)).join('');}
 function captureAlt(){['localidad','barrio','dir','apto','ref'].forEach(k=>{const el=$('a_'+k);if(el)S.alt[k]=el.value;});}
+
+/* ============================================================
+   CAPA DE DATOS SUPABASE (pedidos y suscripción)
+   ============================================================ */
+/* Convierte una fila de Supabase al formato que usan las pantallas */
+function mapOrder(row){
+  const fb=(row.feedback&&row.feedback.length)?row.feedback[0]:null;
+  return {
+    id:row.id, phone:S.phone, status:row.status,
+    items:(row.order_items||[]).map(it=>({n:it.producto,qty:it.qty,u:it.unidad})),
+    del:{localidad:row.localidad,barrio:row.barrio,dir:row.dir,apto:row.apto,ref:row.ref,
+         coords:(row.lat!=null?{lat:row.lat,lng:row.lng}:null),mapsLink:row.maps_link},
+    horario:row.horario, nota:row.nota,
+    quote:(row.total_quoted!=null?{price:row.total_quoted,napa:row.napa}:null),
+    feedback:(fb?{stars:fb.stars,text:fb.comment}:null),
+    createdAt:row.created_at?new Date(row.created_at).getTime():Date.now()
+  };
+}
+/* Carga (o recarga) los pedidos del usuario actual desde Supabase */
+async function loadOrders(){
+  const u=currentUser(); if(!u||!u.uid)return;
+  try{
+    const {data:rows,error}=await sb.from('orders')
+      .select('*, order_items(*), feedback(*)').eq('user_id',u.uid)
+      .order('created_at',{ascending:false});
+    if(!error&&rows) data.orders=rows.map(mapOrder);
+  }catch(e){console.warn('pedidos:',e);}
+}
+/* Carga el estado de la suscripción del usuario desde Supabase */
+async function loadSub(u){
+  if(!u||!u.uid)return;
+  try{
+    const {data:rows}=await sb.from('subscriptions').select('*')
+      .eq('user_id',u.uid).order('created_at',{ascending:false}).limit(1);
+    const s=rows&&rows[0];
+    u.sub = s ? {
+      active:(s.status==='activa'&&s.expires_at&&new Date(s.expires_at).getTime()>Date.now()),
+      pending:(s.status==='pendiente'),
+      expires:(s.expires_at?new Date(s.expires_at).getTime():0),
+      id:s.id, status:s.status
+    } : {active:false,pending:false};
+  }catch(e){console.warn('suscripción:',e);}
+}
 
 /* GPS (mismo método del app actual) */
 function reqGPS(target){
@@ -643,11 +702,11 @@ function handle(act){
   // navegación simple
   if(act==='back-auth'){S.screen='auth';return render();}
   if(act==='back-home'){S.screen='home';return render();}
-  if(act==='back-catalog'){data=DB.load();loadCatalog();S.screen='catalog';return render();}
+  if(act==='back-catalog'){loadCatalog();S.screen='catalog';return render();}
   if(act==='go-sub'||act==='subscription'){S.screen='subscription';return render();}
-  if(act==='logout'){S.phone='';S.user=null;S.screen='auth';return render();}
+  if(act==='logout')return doLogout();
   if(act==='start-order'){
-    data=DB.load();loadCatalog();
+    loadCatalog();
     const u=currentUser();
     if(!activeSub(u)&&hasUsedFreeOrder(u)){S.screen='subscription';return render();}
     S.cart={};S.screen='catalog';return render();
@@ -663,8 +722,8 @@ function handle(act){
   if(act==='gps-alt')return reqGPS(S.alt);
   if(act==='mark-sub-paid')return markSubPaid();
   if(act==='send-order')return sendOrder();
-  if(act==='check-quote'){data=DB.load();S.order=data.orders.find(o=>o.id===S.order.id)||S.order;if(S.order.status==='cotizado'){S.screen='quoted';}return render();}
-  if(act==='refresh-order'){data=DB.load();const f=data.orders.find(o=>o.id===S.order.id);if(f)S.order=f;return render();}
+  if(act==='check-quote')return checkQuote();
+  if(act==='refresh-order')return refreshOrder();
   if(act==='accept-quote')return acceptQuote();
   if(act==='reject-quote')return rejectQuote();
   if(act==='open-quote'){S.screen='quoted';return render();}
@@ -673,9 +732,14 @@ function handle(act){
   if(act==='go-feedback'){S.screen='feedback';return render();}
   if(act==='send-feedback')return sendFeedback();
 
-  if(act.startsWith('open-')){data=DB.load();const id=act.slice(5);S.order=data.orders.find(o=>o.id===id);
+  if(act.startsWith('open-')){const id=act.slice(5);S.order=data.orders.find(o=>o.id===id)||S.order;
     if(S.order.status==='cotizado')S.screen='quoted';else if(S.order.status==='pagando')S.screen='pay';else S.screen='track';return render();}
 }
+/* Cierra sesión también en Supabase */
+async function doLogout(){ try{await sb.auth.signOut();}catch(e){} S.phone='';S.user=null;data.orders=[];S.screen='auth';render(); }
+/* Refresca un pedido desde Supabase y muestra la cotización si ya está lista */
+async function checkQuote(){ await loadOrders(); const f=data.orders.find(o=>o.id===S.order.id); if(f)S.order=f; if(S.order.status==='cotizado')S.screen='quoted'; render(); }
+async function refreshOrder(){ await loadOrders(); const f=data.orders.find(o=>o.id===S.order.id); if(f)S.order=f; render(); }
 
 /* ---------- AUTH actions ---------- */
 function goRegister(){
@@ -719,18 +783,28 @@ async function doLogin(){
     data.users[ph]={...prev,phone:ph,uid,
       nombre:prof?prof.nombre:prev.nombre,apellidos:prof?prof.apellidos:prev.apellidos,
       del:addr?{localidad:addr.localidad,barrio:addr.barrio,dir:addr.dir,apto:addr.apto,ref:addr.ref,coords:(addr.lat!=null?{lat:addr.lat,lng:addr.lng}:null),mapsLink:addr.maps_link}:(prev.del||{}),
-      sub:prev.sub||{active:false,pending:false},firstOrderUsed:prev.firstOrderUsed||false};
-    persist();S.phone=ph;S.screen='home';render();
+      sub:prev.sub||{active:false,pending:false},firstOrderUsed:prof?!!prof.first_order_used:(prev.firstOrderUsed||false)};
+    S.phone=ph;
+    await loadSub(data.users[ph]);
+    await loadOrders();
+    persist();S.screen='home';render();
   }catch(e){err.textContent='Error de conexión. Revisa tu internet e intenta de nuevo.';}
 }
 
 /* ---------- SUSCRIPCIÓN ---------- */
-function markSubPaid(){
-  const u=currentUser();u.sub=u.sub||{};u.sub.pending=true;persist();render();
+async function markSubPaid(){
+  const u=currentUser(); if(!u||!u.uid)return;
+  if(u.sub&&u.sub.pending)return;            // evita duplicar
+  try{
+    await sb.from('subscriptions').insert({user_id:u.uid,status:'pendiente',tipo:'anual'});
+    u.sub={...(u.sub||{}),pending:true};
+  }catch(e){alert('No se pudo registrar tu pago. Revisa tu internet e intenta de nuevo.');}
+  render();
 }
 
 /* ---------- PEDIDO ---------- */
-function sendOrder(){
+async function sendOrder(){
+  if(S.sending)return;
   const u=currentUser();
   const items=Object.keys(S.cart).filter(k=>S.cart[k]>0).map(n=>({n,qty:S.cart[n]}));
   if(!items.length){alert('Tu lista está vacía.');return;}
@@ -740,24 +814,61 @@ function sendOrder(){
     if(!S.alt.localidad||!S.alt.barrio||!S.alt.dir){alert('Completa la dirección alterna: localidad, barrio y dirección.');return;}
     del={localidad:S.alt.localidad,barrio:S.alt.barrio,dir:S.alt.dir,apto:S.alt.apto||'',ref:S.alt.ref||'',coords:S.alt.coords||null,mapsLink:S.alt.mapsLink||''};
   }
-  const o={id:uid(),phone:S.phone,items,del,horario:($('horario')?$('horario').value:''),nota:($('nota')?$('nota').value:''),
-    status:'cotizando',quote:null,feedback:null,createdAt:Date.now()};
-  data.orders.push(o);
-  if(!u.firstOrderUsed){u.firstOrderUsed=true;} // primera compra = prueba gratis (sin cobro de servicio)
-  persist();S.order=o;S.cart={};S.altAddr=false;S.alt={};S.screen='quoting';render();
+  const horario=($('horario')?$('horario').value:''), nota=($('nota')?$('nota').value:'');
+  S.sending=true;
+  try{
+    const {data:ins,error}=await sb.from('orders').insert({
+      user_id:u.uid, status:'cotizando', horario, nota,
+      localidad:del.localidad, barrio:del.barrio, dir:del.dir, apto:del.apto||'', ref:del.ref||'',
+      lat:del.coords?del.coords.lat:null, lng:del.coords?del.coords.lng:null, maps_link:del.mapsLink||''
+    }).select().single();
+    if(error||!ins){S.sending=false;alert('No se pudo enviar el pedido. Revisa tu internet e intenta de nuevo.');return;}
+    const itemRows=items.map(it=>({order_id:ins.id,producto:it.n,qty:it.qty,unidad:unitOf(it.n)}));
+    await sb.from('order_items').insert(itemRows);
+    if(!u.firstOrderUsed){ try{await sb.from('profiles').update({first_order_used:true}).eq('id',u.uid);}catch(e){} u.firstOrderUsed=true; }
+    S.order=mapOrder({...ins,order_items:itemRows.map(r=>({producto:r.producto,qty:r.qty,unidad:r.unidad})),feedback:[]});
+    S.cart={};S.altAddr=false;S.alt={};S.screen='quoting';
+  }catch(e){alert('Error de conexión. Intenta de nuevo.');}
+  S.sending=false;render();
 }
-function acceptQuote(){S.order.status='pagando';persist();S.screen='pay';render();}
-function rejectQuote(){S.order.status='cancelado';persist();S.screen='home';render();}
-function markOrderPaid(){S.order.status='por_confirmar';persist();S.screen='track';render();}
-function sendFeedback(){
+async function acceptQuote(){ try{await sb.from('orders').update({status:'pagando'}).eq('id',S.order.id);}catch(e){} S.order.status='pagando';S.screen='pay';render(); }
+async function rejectQuote(){ try{await sb.from('orders').update({status:'cancelado'}).eq('id',S.order.id);}catch(e){} S.order.status='cancelado';S.screen='home';render(); }
+async function markOrderPaid(){ try{await sb.from('orders').update({status:'por_confirmar'}).eq('id',S.order.id);}catch(e){} S.order.status='por_confirmar';S.screen='track';render(); }
+async function sendFeedback(){
   const v=parseInt($('stars').dataset.v,10)||0;
   if(!v){alert('Toca las estrellas para calificar.');return;}
-  S.order.feedback={stars:v,text:($('fbtext')?$('fbtext').value:''),at:Date.now()};
-  persist();S.screen='track';render();
+  const u=currentUser(); const txt=($('fbtext')?$('fbtext').value:'');
+  try{ await sb.from('feedback').insert({order_id:S.order.id,user_id:u.uid,stars:v,comment:txt}); }
+  catch(e){ alert('No se pudo enviar tu opinión. Intenta de nuevo.'); return; }
+  S.order.feedback={stars:v,text:txt};
+  S.screen='track';render();
 }
 
-loadCatalog();
-render();
+/* ---------- ARRANQUE ---------- */
+async function boot(){
+  loadCatalog();          // pinta de inmediato con el catálogo por defecto
+  syncCatalog();          // y trae el real de Supabase (re-render al llegar)
+  try{
+    const {data:{session}}=await sb.auth.getSession();
+    if(session&&session.user){
+      const uid=session.user.id;
+      const {data:prof}=await sb.from('profiles').select('*').eq('id',uid).maybeSingle();
+      if(prof){
+        const ph=prof.phone||'';
+        const {data:addr}=await sb.from('addresses').select('*').eq('user_id',uid).eq('is_primary',true).maybeSingle();
+        data.users[ph]={phone:ph,uid,nombre:prof.nombre,apellidos:prof.apellidos,
+          del:addr?{localidad:addr.localidad,barrio:addr.barrio,dir:addr.dir,apto:addr.apto,ref:addr.ref,coords:(addr.lat!=null?{lat:addr.lat,lng:addr.lng}:null),mapsLink:addr.maps_link}:{},
+          sub:{active:false,pending:false},firstOrderUsed:!!prof.first_order_used};
+        S.phone=ph;
+        await loadSub(data.users[ph]);
+        await loadOrders();
+        S.screen='home';
+      }
+    }
+  }catch(e){console.warn('sesión:',e);}
+  render();
+}
+boot();
 </script>
 </body>
 </html>
