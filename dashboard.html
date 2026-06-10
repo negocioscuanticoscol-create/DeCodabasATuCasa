@@ -76,6 +76,7 @@ a.link{color:var(--g);font-weight:700;text-decoration:none}
   .mtabs button{white-space:nowrap;border:none;background:#eef1ec;color:var(--tl);font-weight:700;padding:8px 12px;border-radius:999px;font-size:13px}
   .mtabs button.on{background:var(--g);color:#fff}
   .row2{grid-template-columns:1fr}
+  .row3{grid-template-columns:1fr}
 }
 /* GATE */
 #gate{position:fixed;inset:0;background:linear-gradient(135deg,var(--gd),#0f3d13);display:flex;align-items:center;justify-content:center;z-index:50}
@@ -221,6 +222,7 @@ async function syncData(){
              coords:(o.lat!=null?{lat:o.lat,lng:o.lng}:null),mapsLink:o.maps_link},
         horario:o.horario,nota:o.nota,
         quote:(o.total_quoted!=null?{price:o.total_quoted,napa:o.napa}:null),
+        facturaUrl:o.factura_url||null,
         feedback:(fb?{stars:fb.stars,text:fb.comment}:null),
         createdAt:o.created_at?new Date(o.created_at).getTime():Date.now()};
     });
@@ -328,6 +330,8 @@ function vPedidos(){
       <div class="tiny">${esc(o.del?o.del.barrio:'')}, ${esc(o.del?o.del.localidad:'')}</div>
       <div style="margin:8px 0;font-size:13px">${o.items.map(i=>`${esc(i.n)} ×${i.qty}`).join(' · ')}</div>
       ${o.nota?`<div class="tiny">📝 ${esc(o.nota)}</div>`:''}
+      <label style="display:block;margin-top:10px">📄 Foto de la factura <span class="tiny">(obligatoria — cámara o galería)</span></label>
+      <input id="f-${o.id}" type="file" accept="image/*" style="width:100%;font-size:13px;margin-top:4px">
       <div class="row3" style="margin-top:8px">
         <div><label>Valor cotizado</label><input id="q-${o.id}" type="number" placeholder="$"></div>
         <div><label>Ñapa</label><input id="n-${o.id}" placeholder="ej: manojo de cilantro"></div>
@@ -340,7 +344,7 @@ function vPedidos(){
   </div>
   <div class="card"><h3>📦 Todos los pedidos (${ord.length})</h3>
     ${ord.length?ord.map(o=>`<div class="li"><span>${esc(uname(o.phone))} <span class="tiny">· ${new Date(o.createdAt).toLocaleDateString('es-CO')} · ${o.items.length} items</span></span>
-      <span>${o.quote?`<span class="tag">${COP(o.quote.price)}</span> `:''}${statusPill(o.status)}</span></div>`).join(''):'<div class="empty">Aún no hay pedidos.</div>'}
+      <span>${o.facturaUrl?`<a class="link" target="_blank" href="${o.facturaUrl}">📄</a> `:''}${o.quote?`<span class="tag">${COP(o.quote.price)}</span> `:''}${statusPill(o.status)}</span></div>`).join(''):'<div class="empty">Aún no hay pedidos.</div>'}
   </div>`;
 }
 
@@ -464,12 +468,39 @@ function vConfig(){
 }
 
 /* ---------- acciones ---------- */
+/* Redimensiona/comprime una imagen a JPEG antes de subirla */
+async function fileToJpeg(file,maxW=1600,quality=0.82){
+  const url=URL.createObjectURL(file);
+  try{
+    const img=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=url;});
+    let w=img.width,h=img.height;
+    if(w>maxW){h=Math.round(h*maxW/w);w=maxW;}
+    const c=document.createElement('canvas');c.width=w;c.height=h;
+    c.getContext('2d').drawImage(img,0,0,w,h);
+    return await new Promise(res=>c.toBlob(res,'image/jpeg',quality));
+  }finally{ URL.revokeObjectURL(url); }
+}
 async function doQuote(id){
   const price=parseInt(($('q-'+id)||{}).value,10);
   const napa=(($('n-'+id)||{}).value||'').trim();
+  const fi=$('f-'+id); const file=fi&&fi.files&&fi.files[0];
   if(!price||price<=0){alert('Ingresa un valor válido.');return;}
-  try{ await sb.from('orders').update({total_quoted:price,napa:napa||'Sorpresa de la casa',status:'cotizado'}).eq('id',id); }
-  catch(e){ alert('No se pudo guardar la cotización. Revisa tu internet.'); return; }
+  if(!file){alert('Adjunta la foto de la factura para poder enviar la cotización.');return;}
+  const btn=document.activeElement; if(btn&&btn.tagName==='BUTTON'){btn.disabled=true;btn.textContent='Enviando…';}
+  try{
+    const blob=await fileToJpeg(file);
+    const path='factura-'+id+'.jpg';
+    const {error:upErr}=await sb.storage.from('facturas').upload(path,blob,{upsert:true,contentType:'image/jpeg'});
+    if(upErr) throw upErr;
+    const {data:pub}=sb.storage.from('facturas').getPublicUrl(path);
+    const facturaUrl=pub.publicUrl+'?t='+Date.now();   // evita que el navegador muestre una foto vieja en caché
+    await sb.from('orders').update({total_quoted:price,napa:napa||'Sorpresa de la casa',factura_url:facturaUrl,status:'cotizado'}).eq('id',id);
+  }catch(e){
+    console.warn('cotizar:',e);
+    if(btn&&btn.tagName==='BUTTON'){btn.disabled=false;btn.textContent='Enviar';}
+    alert('No se pudo subir la factura o guardar la cotización. Revisa tu internet e intenta de nuevo.');
+    return;
+  }
   await refresh();
 }
 async function approve(id){ try{await sb.from('orders').update({status:'en_curso'}).eq('id',id);}catch(e){alert('No se pudo aprobar.');return;} await refresh(); }
