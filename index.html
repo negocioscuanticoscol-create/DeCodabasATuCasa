@@ -268,6 +268,7 @@ async function loadOrders(){
       .order('created_at',{ascending:false});
     if(!error&&rows) data.orders=rows.map(mapOrder);
   }catch(e){console.warn('pedidos:',e);}
+  startRealtime();   // activa el tiempo real una vez hay sesión (idempotente)
 }
 /* Carga el estado de la suscripción del usuario desde Supabase */
 async function loadSub(u){
@@ -597,14 +598,14 @@ function confirmScreen(){
 
 /* ---------- COTIZANDO ---------- */
 function quotingScreen(){
-  return header('Cotizando tu pedido','Espera un momento')+
+  return header('Cotizando tu pedido','Puede tomar unos minutos')+
   `<div class="wrap">
     <div class="card center">
       <div style="font-size:46px">🧾</div>
       <h3 style="color:var(--gd);margin:8px 0">El dueño está revisando tu pedido</h3>
-      <p class="muted">Verifica disponibilidad y prepara tu cotización con la ñapa de cortesía. Esto no tarda mucho.</p>
+      <p class="muted">Verifica disponibilidad y prepara tu cotización con la ñapa de cortesía. Puede tomar unos minutos; esta pantalla se actualiza sola cuando esté lista.</p>
       <div class="demo"><b>Modo prueba:</b> la cotización la ingresa el gestor desde su panel. (En producción llega por WhatsApp/sistema y vuelve automáticamente.)</div>
-      <button class="btn btn-ghost" data-act="check-quote" style="margin-top:8px">Actualizar estado</button>
+      <button class="btn btn-ghost" data-act="check-quote" style="margin-top:8px">Actualizar ahora</button>
     </div>
   </div>`;
 }
@@ -777,10 +778,33 @@ function handle(act){
     if(S.order.status==='cotizado')S.screen='quoted';else if(S.order.status==='pagando')S.screen='pay';else S.screen='track';return render();}
 }
 /* Cierra sesión también en Supabase */
-async function doLogout(){ try{await sb.auth.signOut();}catch(e){} S.phone='';S.user=null;data.orders=[];S.screen='auth';render(); }
+async function doLogout(){ stopRealtime(); try{await sb.auth.signOut();}catch(e){} S.phone='';S.user=null;data.orders=[];S.screen='auth';render(); }
 /* Refresca un pedido desde Supabase y muestra la cotización si ya está lista */
 async function checkQuote(){ await loadOrders(); const f=data.orders.find(o=>o.id===S.order.id); if(f)S.order=f; if(S.order.status==='cotizado')S.screen='quoted'; render(); }
 async function refreshOrder(){ await loadOrders(); const f=data.orders.find(o=>o.id===S.order.id); if(f)S.order=f; render(); }
+
+/* ---------- TIEMPO REAL (cliente) ---------- */
+let rtChannel=null, rtUid=null;
+function startRealtime(){
+  const u=currentUser(); if(!u||!u.uid)return;
+  if(rtChannel&&rtUid===u.uid)return;          // ya suscrito para este usuario
+  stopRealtime(); rtUid=u.uid;
+  try{
+    rtChannel=sb.channel('cli-orders-'+u.uid)
+      .on('postgres_changes',{event:'*',schema:'public',table:'orders',filter:'user_id=eq.'+u.uid}, onOrderChange)
+      .subscribe();
+  }catch(e){console.warn('realtime:',e);}
+}
+function stopRealtime(){ if(rtChannel){ try{sb.removeChannel(rtChannel);}catch(e){} } rtChannel=null; rtUid=null; }
+async function onOrderChange(){
+  await loadOrders();
+  if(S.order){
+    const f=data.orders.find(o=>o.id===S.order.id);
+    if(f){ S.order=f; if(S.screen==='quoting'&&f.status==='cotizado') S.screen='quoted'; }
+  }
+  // solo repinta en pantallas que muestran estado del pedido (no interrumpe formularios)
+  if(['quoting','quoted','pay','track','home','history'].includes(S.screen)) render();
+}
 
 /* ---------- AUTH actions ---------- */
 function goRegister(){
