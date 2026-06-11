@@ -278,7 +278,7 @@ async function initDash(){
     }
   }catch(e){console.warn('initDash:',e);}
 }
-async function boot(){$('gate').style.display='none';$('shell').style.display='flex';buildNav();await syncData();render();loadCuentas();}
+async function boot(){$('gate').style.display='none';$('shell').style.display='flex';buildNav();await syncData();render();loadCuentas();startDashRealtime();}
 
 /* ---------- nav ---------- */
 function buildNav(){
@@ -286,7 +286,29 @@ function buildNav(){
   $('mtabs').innerHTML=TABS.map(([k,ic,l])=>`<button class="${k===tab?'on':''}" onclick="setTab('${k}')">${ic} ${l}</button>`).join('');
 }
 function setTab(t){tab=t;routeOut=null;buildNav();render();}
-async function refresh(){await syncData();render();loadCuentas();}
+async function refresh(){await syncData();render();loadCuentas();rtPending=false;}
+
+/* ---------- TIEMPO REAL (panel) ---------- */
+let rtPending=false, rtChannel=null;
+/* ¿El gestor está escribiendo algo? (para no borrarle el trabajo al refrescar) */
+function dashboardBusy(){
+  const ae=document.activeElement;
+  if(ae && /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName)) return true;
+  for(const el of document.querySelectorAll('input[id^="q-"],input[id^="n-"]')){ if(el.value&&el.value.trim()) return true; }
+  for(const el of document.querySelectorAll('input[id^="f-"],input[id^="pimg-"],#bulk-files')){ if(el.files&&el.files.length) return true; }
+  return false;
+}
+async function applyPending(){ if(rtPending&&!dashboardBusy()){ rtPending=false; await refresh(); } }
+function startDashRealtime(){
+  if(rtChannel) return;
+  try{
+    rtChannel=sb.channel('panel-rt')
+      .on('postgres_changes',{event:'*',schema:'public',table:'orders'}, ()=>{rtPending=true;applyPending();})
+      .on('postgres_changes',{event:'*',schema:'public',table:'subscriptions'}, ()=>{rtPending=true;applyPending();})
+      .subscribe();
+  }catch(e){console.warn('realtime panel:',e);}
+  setInterval(applyPending, 3000);   // aplica cambios pendientes apenas el gestor deja de escribir
+}
 
 /* ---------- KPIs ---------- */
 function kpis(){
