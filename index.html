@@ -75,6 +75,9 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--g)}
 .catbar button.on{background:var(--g);color:#fff;border-color:var(--g)}
 .pgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .prod{border:1px solid var(--bd);border-radius:12px;padding:11px;background:#fff}
+.prod .pimg{width:100%;height:100px;border-radius:8px;overflow:hidden;background:#f3f6f1;display:flex;align-items:center;justify-content:center;margin-bottom:8px}
+.prod .pimg img{width:100%;height:100%;object-fit:cover}
+.prod .pimg .ph{font-size:36px;opacity:.65}
 .prod .nm{font-weight:700;font-size:13px;min-height:34px}
 .prod .un{font-size:11px;color:var(--tl);margin-bottom:8px}
 .qtyc{display:flex;align-items:center;gap:8px}
@@ -180,10 +183,10 @@ const CAT_ORDER=['🥦 Verduras','🍎 Frutas','🥤 Pulpas','🥩 Carnes','🥛
 /* Trae el catálogo real desde la tabla products de Supabase */
 async function syncCatalog(){
   try{
-    const {data:rows,error}=await sb.from('products').select('categoria,nombre,unidad,activo').eq('activo',true).order('nombre');
+    const {data:rows,error}=await sb.from('products').select('categoria,nombre,unidad,activo,image_url').eq('activo',true).order('nombre');
     if(error||!rows||!rows.length)return;            // si falla, se queda el catálogo por defecto
     const cat={};
-    rows.forEach(r=>{const c=r.categoria||'Otros';(cat[c]=cat[c]||[]).push({n:r.nombre,u:r.unidad||'u',off:false});});
+    rows.forEach(r=>{const c=r.categoria||'Otros';(cat[c]=cat[c]||[]).push({n:r.nombre,u:r.unidad||'u',off:false,img:r.image_url||null});});
     const ordered={};
     CAT_ORDER.forEach(c=>{if(cat[c])ordered[c]=cat[c];});
     Object.keys(cat).forEach(c=>{if(!ordered[c])ordered[c]=cat[c];});
@@ -530,6 +533,7 @@ function catalogScreen(){
     ${!S.search.trim()?`<div class="catbar">${CATS.map(c=>`<button class="${c===S.cat?'on':''}" data-cat="${esc(c)}">${c}</button>`).join('')}</div>`:''}
     <div class="pgrid">
       ${list.map(p=>{const q=S.cart[p.n]||0;return `<div class="prod">
+        <div class="pimg">${p.img?`<img src="${p.img}" alt="${esc(p.n)}" loading="lazy">`:`<span class="ph">🧺</span>`}</div>
         <div class="nm">${p.n}</div><div class="un">por ${p.u==='g'?'gramos/libra':'unidad'}</div>
         <div class="qtyc">
           <button data-dec="${esc(p.n)}">−</button>
