@@ -426,12 +426,12 @@ function registerScreen(){
 /* ---------- HOME ---------- */
 function homeScreen(){
   const u=currentUser(); const orders=userOrders(S.phone);
-  const active=activeSub(u); const usedFree=hasUsedFreeOrder(u);
+  const active=activeSub(u); const usedFree=hasUsedFreeOrder(u)||orders.length>0;
   const inProgress=orders.find(o=>['cotizando','cotizado','pagando','por_confirmar','en_curso'].includes(o.status));
   let cta;
   if(inProgress){
     cta=`<button class="btn btn-gd" data-act="open-${inProgress.id}">Ver mi pedido en curso →</button>`;
-  } else if(orders.length===0){
+  } else if(!usedFree){
     cta=`<button class="btn btn-or" data-act="start-order">🛒 Haz tu primer pedido</button>`;
   } else {
     cta=`<button class="btn btn-g" data-act="start-order">🛒 Hacer un nuevo pedido</button>`;
@@ -454,7 +454,7 @@ function homeScreen(){
         <div class="vp"><div class="ic">🚚</div><div><b>En el horario que quieras</b><br><span class="muted">te lo llevamos fresco hasta tu casa</span></div></div>
         <div class="vp"><div class="ic">🍓</div><div><b>Elegimos lo mejor para ti</b><br><span class="muted">seleccionamos las mejores frutas y verduras</span></div></div>
         <div class="vp"><div class="ic">🎁</div><div><b>Siempre va la ñapa</b><br><span class="muted">un regalito de cortesía en cada entrega</span></div></div>
-        <div class="vp"><div class="ic">🆓</div><div><b>Tu primer mercado es prueba gratis</b><br><span class="muted">no pagas servicio la primera vez</span></div></div>
+        ${!usedFree?`<div class="vp"><div class="ic">🆓</div><div><b>Tu primer mercado es prueba gratis</b><br><span class="muted">no pagas servicio la primera vez</span></div></div>`:''}
       </div>
 
       ${!active?`<div class="card"><h3 style="color:var(--gd)">Membresía anual</h3>
