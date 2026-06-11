@@ -226,7 +226,7 @@ async function syncData(){
         feedback:(fb?{stars:fb.stars,text:fb.comment}:null),
         createdAt:o.created_at?new Date(o.created_at).getTime():Date.now()};
     });
-    const cat={}; (prods||[]).forEach(r=>{const c=r.categoria||'Otros';(cat[c]=cat[c]||[]).push({n:r.nombre,u:r.unidad||'u',off:!r.activo,id:r.id});});
+    const cat={}; (prods||[]).forEach(r=>{const c=r.categoria||'Otros';(cat[c]=cat[c]||[]).push({n:r.nombre,u:r.unidad||'u',off:!r.activo,id:r.id,img:r.image_url||null});});
     const ordered={}; CAT_ORDER.forEach(c=>{if(cat[c])ordered[c]=cat[c];}); Object.keys(cat).forEach(c=>{if(!ordered[c])ordered[c]=cat[c];});
     if(Object.keys(ordered).length) data.catalog=ordered;
   }catch(e){console.warn('sync dashboard:',e);}
@@ -435,12 +435,25 @@ function vCatalogo(){
     <div style="margin-top:14px;border-top:1px solid var(--bd);padding-top:12px"><label>Nueva categoría</label>
       <div style="display:flex;gap:10px"><input id="ap-newcat" placeholder="Ej: Panadería"><button class="btn btn-ghost" onclick="addCategory()" style="white-space:nowrap">Crear</button></div></div>
   </div>
+  <div class="card"><h3>🖼️ Carga masiva de fotos</h3>
+    <p class="tiny" style="margin-bottom:8px">Selecciona todas las fotos a la vez. Se emparejan con cada producto por el nombre del archivo, se comprimen y se suben. Al final te dice cuáles no encontró pareja.</p>
+    <input type="file" id="bulk-files" accept="image/*" multiple style="width:100%;font-size:13px">
+    <div style="display:flex;gap:10px;align-items:center;margin-top:10px">
+      <button class="btn btn-g" onclick="bulkUpload()">Subir todas</button>
+      <span id="bulk-status" class="tiny"></span>
+    </div>
+  </div>
   ${cats.map((c,ci)=>{const items=data.catalog[c];return `<div class="card">
     <h3 style="justify-content:space-between"><span>${esc(c)} <span class="tag">${items.length}</span></span>
       ${items.length===0?`<button class="btn btn-ghost" style="padding:6px 10px;font-size:12px" onclick="removeCategory(${ci})">Eliminar categoría</button>`:''}</h3>
     ${items.length?items.map((p,pi)=>`<div class="li">
-      <span>${esc(p.n)} <span class="tiny">· ${p.u==='g'?'gr/lb':'und'}</span></span>
-      <span style="display:flex;gap:8px;align-items:center">
+      <span style="display:flex;align-items:center;gap:8px">
+        ${p.img?`<img src="${p.img}" style="width:36px;height:36px;border-radius:8px;object-fit:cover;border:1px solid var(--bd)">`:`<span style="width:36px;height:36px;border-radius:8px;background:#eef1ec;display:inline-flex;align-items:center;justify-content:center;font-size:16px">📷</span>`}
+        <span>${esc(p.n)} <span class="tiny">· ${p.u==='g'?'gr/lb':'und'}</span></span>
+      </span>
+      <span style="display:flex;gap:6px;align-items:center">
+        <input type="file" id="pimg-${p.id}" accept="image/*" style="display:none" onchange="singleUpload('${p.id}')">
+        <button class="btn btn-ghost" style="padding:5px 8px;font-size:12px" onclick="document.getElementById('pimg-${p.id}').click()" title="Subir o cambiar foto">📷</button>
         <button class="btn ${p.off?'btn-ghost':'btn-g'}" style="padding:5px 10px;font-size:12px" onclick="toggleProduct(${ci},${pi})">${p.off?'Agotado':'Activo'}</button>
         <button class="btn btn-ghost" style="padding:5px 10px;font-size:12px" onclick="removeProduct(${ci},${pi})">✕</button>
       </span></div>`).join(''):'<div class="empty" style="padding:10px">Sin productos. Agrégalos arriba.</div>'}
@@ -452,6 +465,56 @@ function addCategory(){const c=$('ap-newcat').value.trim();if(!c){alert('Escribe
 async function removeCategory(ci){const c=Object.keys(data.catalog)[ci];if(!c)return;if(!confirm('¿Eliminar la categoría "'+c+'" y todos sus productos?'))return;try{await sb.from('products').delete().eq('categoria',c);}catch(e){alert('No se pudo eliminar la categoría.');return;}delete data.catalog[c];await refresh();}
 async function removeProduct(ci,pi){const c=Object.keys(data.catalog)[ci];if(!c)return;const p=data.catalog[c][pi];if(!p)return;if(!confirm('¿Quitar este producto?'))return;if(p.id){try{await sb.from('products').delete().eq('id',p.id);}catch(e){alert('No se pudo quitar el producto.');return;}}await refresh();}
 async function toggleProduct(ci,pi){const c=Object.keys(data.catalog)[ci];if(!c)return;const p=data.catalog[c][pi];if(!p||!p.id)return;try{await sb.from('products').update({activo:p.off}).eq('id',p.id);}catch(e){alert('No se pudo actualizar.');return;}await refresh();}
+
+/* ============================================================
+   FOTOS DE PRODUCTOS — carga masiva e individual a Supabase Storage
+   ============================================================ */
+function normKey(s){
+  s=(s||'').replace(/^\d+[_\-\s]*/,'').replace(/\.[a-z0-9]+$/i,'').replace(/_/g,' ');
+  s=s.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  return s.replace(/\s+/g,' ').trim().toLowerCase();
+}
+/* nombre de archivo (sin pareja exacta) -> nombre de producto */
+const ALIAS={
+  'limon tahiti':'Limón','melon cantaloupe':'Melón','sandia':'Patilla','pitahaya':'Pithaya',
+  'tamarillo':'Tomate de Árbol','mango amarillo':'Mango Azúcar','manzana royal':'Manzana Nacional',
+  'pina':'Piña Golden','pina rodajas':'Piña Lebrija','uva roja':'Uva Nacional','uva verde':'Uva Importada'
+};
+function findProductById(id){for(const c in data.catalog){const p=(data.catalog[c]||[]).find(x=>x.id===id);if(p)return p;}return null;}
+function matchProduct(filename){
+  const key=normKey(filename);
+  const cmp=ALIAS[key]?normKey(ALIAS[key]):key;
+  for(const c in data.catalog){for(const p of data.catalog[c]){ if(p.id&&normKey(p.n)===cmp) return p; }}
+  return null;
+}
+async function uploadOneProduct(p,file){
+  const blob=await fileToJpeg(file,900,0.82);
+  const path='prod-'+p.id+'.jpg';
+  const {error}=await sb.storage.from('productos').upload(path,blob,{upsert:true,contentType:'image/jpeg'});
+  if(error) throw error;
+  const {data:pub}=sb.storage.from('productos').getPublicUrl(path);
+  await sb.from('products').update({image_url:pub.publicUrl+'?t='+Date.now()}).eq('id',p.id);
+}
+async function singleUpload(id){
+  const fi=$('pimg-'+id); const f=fi&&fi.files&&fi.files[0]; if(!f)return;
+  const p=findProductById(id); if(!p)return;
+  try{ await uploadOneProduct(p,f); }catch(e){ alert('No se pudo subir la foto.'); return; }
+  await refresh();
+}
+async function bulkUpload(){
+  const fi=$('bulk-files'); const files=fi&&fi.files?Array.from(fi.files):[];
+  if(!files.length){alert('Selecciona las fotos primero.');return;}
+  const status=$('bulk-status'); let ok=0,fail=0; const noMatch=[];
+  for(let i=0;i<files.length;i++){
+    const f=files[i]; if(status) status.textContent=`Subiendo ${i+1} de ${files.length}…`;
+    const p=matchProduct(f.name);
+    if(!p){ noMatch.push(f.name); continue; }
+    try{ await uploadOneProduct(p,f); ok++; }catch(e){ console.warn('bulk',f.name,e); fail++; }
+  }
+  if(status) status.textContent='';
+  await refresh();
+  alert('Listo.\nSubidas: '+ok+'\nFallidas: '+fail+'\nSin emparejar: '+noMatch.length+(noMatch.length?'\n - '+noMatch.join('\n - '):''));
+}
 
 function vConfig(){
   const sLat=(data.cfg&&data.cfg.startLat)||4.7110, sLng=(data.cfg&&data.cfg.startLng)||-74.0560;
