@@ -3,7 +3,7 @@
    si la red se cae. Nunca cachea las llamadas a Supabase (para no mostrar
    datos viejos de pedidos, catálogo, etc.). */
 const CACHE = 'codabas-v1';
-const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
+const SHELL = ['./', './index.html', './dashboard.html', './manifest.webmanifest', './manifest-admin.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(
