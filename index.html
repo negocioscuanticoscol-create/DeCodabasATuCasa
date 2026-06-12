@@ -118,10 +118,21 @@ a.link{color:var(--g);font-weight:700;text-decoration:none}
 .pr.ok{color:var(--ok)} .pr.ok::before{content:'✓ '}
 .pr.bad{color:#dc2626} .pr.bad::before{content:'✕ '}
 #pwrules.invalid{border-color:#dc2626;background:#fef2f2}
+#installBar{display:none;position:fixed;left:0;right:0;bottom:0;z-index:9999;align-items:center;gap:10px;
+  background:var(--gd);color:#fff;padding:12px 14px;padding-bottom:calc(12px + env(safe-area-inset-bottom));
+  box-shadow:0 -2px 14px rgba(0,0,0,.20);font-size:14px}
+#installBar #installMsg{flex:1;line-height:1.3}
+#installBar #installBtn{background:#fff;color:var(--gd);border:none;border-radius:8px;padding:8px 16px;font-weight:800;font-size:14px;cursor:pointer;white-space:nowrap}
+#installBar #installClose{background:transparent;border:none;color:#fff;font-size:18px;cursor:pointer;padding:4px 6px;opacity:.85}
 </style>
 </head>
 <body>
 <div id="app"></div>
+<div id="installBar">
+  <span id="installMsg">📲 Instala la app de CODABAS</span>
+  <button id="installBtn">Instalar</button>
+  <button id="installClose" aria-label="Cerrar">✕</button>
+</div>
 
 <script>
 /* ============================================================
@@ -958,6 +969,35 @@ boot();
 if('serviceWorker' in navigator){
   window.addEventListener('load',()=>{ navigator.serviceWorker.register('sw.js').catch(()=>{}); });
 }
+
+/* ---------- PWA: botón de instalar en la interfaz ---------- */
+(function(){
+  const ua=navigator.userAgent.toLowerCase();
+  const isIOS=/iphone|ipad|ipod/.test(ua);
+  const isSafari=/safari/.test(ua) && !/crios|fxios|chrome|android/.test(ua);
+  const standalone=()=>window.matchMedia('(display-mode: standalone)').matches || navigator.standalone===true;
+  const dismissed=()=>{try{return localStorage.getItem('codabas_install_dismissed')==='1';}catch(e){return false;}};
+  const bar=()=>$('installBar');
+  let deferred=null;
+  function show(){ if(standalone()||dismissed())return; const b=bar(); if(b)b.style.display='flex'; }
+  function hide(){ const b=bar(); if(b)b.style.display='none'; }
+
+  window.addEventListener('beforeinstallprompt',e=>{ e.preventDefault(); deferred=e; show(); });
+  window.addEventListener('appinstalled',()=>{ deferred=null; hide(); });
+
+  window.addEventListener('load',()=>{
+    if(standalone()){ hide(); return; }
+    const btn=$('installBtn'), close=$('installClose'), msg=$('installMsg');
+    if(close)close.onclick=()=>{ hide(); try{localStorage.setItem('codabas_install_dismissed','1');}catch(e){} };
+    if(btn)btn.onclick=async()=>{
+      if(deferred){ deferred.prompt(); const r=await deferred.userChoice; deferred=null; if(r&&r.outcome==='accepted')hide(); }
+      else if(isIOS){ if(msg)msg.innerHTML='📲 Toca <b>Compartir</b> (cuadro con flecha ↑) y luego <b>"Agregar a pantalla de inicio"</b>'; btn.style.display='none'; }
+      else { alert('Abre el menú de tu navegador y elige "Instalar app" o "Agregar a pantalla de inicio".'); }
+    };
+    // iPhone (Safari) no dispara el evento automático → mostramos la barra con su instrucción al tocar
+    if(isIOS && isSafari){ if(msg)msg.textContent='📲 Instala la app de CODABAS en tu iPhone'; show(); }
+  });
+})();
 </script>
 </body>
 </html>
