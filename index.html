@@ -4,6 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>De CODABAS a tu Casa</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#1B5E20">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="CODABAS">
+<meta name="mobile-web-app-capable" content="yes">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root{
@@ -366,7 +374,6 @@ function otpScreen(){
   `<div class="wrap">
     <div class="card">
       <p>Ingresa el código de 4 dígitos que enviamos a <b>${esc(S.phone)}</b>.</p>
-      <div class="demo"><b>Modo prueba:</b> aún no hay envío real de SMS. Tu código simulado es <b style="font-size:16px">${S.pendingOtp}</b> (esto se conecta luego a un proveedor de SMS).</div>
       <label>Código</label>
       <input id="otp" type="tel" inputmode="numeric" maxlength="4" placeholder="• • • •" style="letter-spacing:8px;text-align:center;font-size:22px">
       <div class="err" id="otperr"></div>
@@ -502,21 +509,15 @@ function subScreen(){
     </div>
     <div class="card">
       <h3 style="color:var(--gd)">¿Cómo pagar?</h3>
-      <p class="muted">Transfiere por <b>Nequi</b> y envíanos el comprobante.</p>
-      <div class="qr">
-        <div style="font-size:30px">📱</div>
-        <div>Aquí va tu QR de Nequi</div>
-        <div class="tiny">(reemplazar por la imagen real)</div>
-      </div>
+      <p class="muted">Transfiere por <b>Nequi</b> y envíanos el comprobante por WhatsApp.</p>
       <div class="li"><span>Nequi</span><b>${CFG.nequi}</b></div>
       <div class="li"><span>Valor</span><b>${COP(CFG.planAnual)}</b></div>
       <a class="btn btn-g" style="margin-top:12px;text-decoration:none" target="_blank"
-        href="https://wa.me/${CFG.whatsapp}?text=${encodeURIComponent('Hola, envío comprobante de pago de mi membresía anual. Mi usuario es '+S.phone)}">
-        Enviar comprobante por WhatsApp</a>
-      <div class="demo">Cuando el gestor verifique tu comprobante, tu membresía quedará activa. (En producción esto se valida automáticamente con la pasarela.)</div>
+        href="https://wa.me/${CFG.whatsapp}?text=${encodeURIComponent('Hola, soy '+((u.nombre||'')+' '+(u.apellidos||'')).trim()+' ('+S.phone+'). Adjunto el comprobante de pago de mi membresía anual ('+COP(CFG.planAnual)+').')}">
+        📲 Enviar comprobante por WhatsApp</a>
       ${pendingSub
         ? `<div class="note">⏳ Ya marcaste tu pago como enviado. Estamos verificando.</div>`
-        : `<button class="btn btn-or" data-act="mark-sub-paid">Ya transferí — marcar como pagado</button>`}
+        : `<button class="btn btn-or" data-act="mark-sub-paid" style="margin-top:8px">Ya envié el comprobante</button>`}
     </div>
   </div>`;
 }
@@ -604,7 +605,6 @@ function quotingScreen(){
       <div style="font-size:46px">🧾</div>
       <h3 style="color:var(--gd);margin:8px 0">El dueño está revisando tu pedido</h3>
       <p class="muted">Verifica disponibilidad y prepara tu cotización con la ñapa de cortesía. Puede tomar unos minutos; esta pantalla se actualiza sola cuando esté lista.</p>
-      <div class="demo"><b>Modo prueba:</b> la cotización la ingresa el gestor desde su panel. (En producción llega por WhatsApp/sistema y vuelve automáticamente.)</div>
       <button class="btn btn-ghost" data-act="check-quote" style="margin-top:8px">Actualizar ahora</button>
     </div>
   </div>`;
@@ -642,17 +642,20 @@ function quotedScreen(){
 /* ---------- PAGO DEL PEDIDO ---------- */
 function payScreen(){
   const o=S.order;
+  const u=currentUser()||{};
+  const nombre=((u.nombre||'')+' '+(u.apellidos||'')).trim();
+  const ref=(o.id||'').slice(-6).toUpperCase();
+  const msg='Hola, soy '+nombre+' ('+S.phone+'). Adjunto el comprobante de pago de mi pedido (Ref: '+ref+') por '+COP(o.quote.price)+'.';
   return header('Pagar tu pedido',COP(o.quote.price))+
   `<div class="wrap">
     <div class="card center">
       <div class="muted">Total a transferir</div>
       <div style="font-size:36px;font-weight:800;color:var(--gd)">${COP(o.quote.price)}</div>
-      <div class="qr"><div style="font-size:30px">📱</div><div>QR de Nequi</div><div class="tiny">(reemplazar por imagen real)</div></div>
-      <div class="li"><span>Nequi</span><b>${CFG.nequi}</b></div>
-      <a class="btn btn-g" style="margin-top:12px;text-decoration:none" target="_blank"
-        href="https://wa.me/${CFG.whatsapp}?text=${encodeURIComponent('Hola, envío comprobante de mi pedido '+o.id+' por '+COP(o.quote.price))}">Enviar comprobante por WhatsApp</a>
-      <div class="demo">Tras verificar tu pago, el gestor aprueba el pedido y entra "en curso".</div>
-      <button class="btn btn-or" data-act="mark-order-paid" style="margin-top:6px">Ya transferí — marcar como pagado</button>
+      <div class="li"><span>Transfiere por Nequi a</span><b>${CFG.nequi}</b></div>
+      <a class="btn btn-g" style="margin-top:14px;text-decoration:none" target="_blank"
+        href="https://wa.me/${CFG.whatsapp}?text=${encodeURIComponent(msg)}">📲 Enviar comprobante por WhatsApp</a>
+      <button class="btn btn-or" data-act="mark-order-paid" style="margin-top:8px">Ya envié el comprobante</button>
+      <div class="muted" style="margin-top:10px;font-size:12px">Cuando confirmemos tu pago, tu pedido pasa a "en curso".</div>
     </div>
     ${facturaCard(o)}
   </div>`;
@@ -950,6 +953,11 @@ async function boot(){
   render();
 }
 boot();
+
+/* ---------- PWA: registrar service worker (instalable + offline) ---------- */
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{ navigator.serviceWorker.register('sw.js').catch(()=>{}); });
+}
 </script>
 </body>
 </html>
