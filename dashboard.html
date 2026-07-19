@@ -160,13 +160,13 @@ const PIN='2468';                         // PIN del panel (cambiar en producci�
 const NEQUI='3502241852', PLAN=360000;
 
 /* ---------- Supabase (solo lectura del conteo de cuentas por ahora) ---------- */
-const SB_URL='https://fysgabeftwkwrfwdbpbf.supabase.co';
-const SB_KEY='sb_publishable_Ea0Smx3RbFQK0SXQk1OMOg_lNNTtOh2';
+const SB_URL='https://fnayedgvamxktxfvywwl.supabase.co';
+const SB_KEY='sb_publishable_NVTYNkJ0V6obLwgwjXza1g_3Ihp-xMv';
 const sb=supabase.createClient(SB_URL,SB_KEY);
 let cuentas='…';   // se llena al cargar; '…' mientras consulta a Supabase
 async function loadCuentas(){
   try{
-    const {data,error}=await sb.rpc('total_cuentas');
+    const {data,error}=await sb.rpc('fresco_total_cuentas');
     if(error) throw error;
     cuentas=(data==null?'—':data);
   }catch(e){ console.warn('No se pudo leer cuentas:',e); cuentas='—'; }
@@ -227,10 +227,10 @@ const CAT_ORDER=['🥦 Verduras','🍎 Frutas','🥤 Pulpas','🥩 Carnes','🥛
 async function syncData(){
   try{
     const [{data:profs},{data:subs},{data:ords},{data:prods}]=await Promise.all([
-      sb.from('profiles').select('*'),
-      sb.from('subscriptions').select('*').order('created_at',{ascending:false}),
-      sb.from('orders').select('*, order_items(*), feedback(*)').order('created_at',{ascending:false}),
-      sb.from('products').select('*').order('nombre')
+      sb.from('fresco_profiles').select('*'),
+      sb.from('fresco_subscriptions').select('*').order('created_at',{ascending:false}),
+      sb.from('fresco_orders').select('*, fresco_order_items(*), fresco_feedback(*)').order('created_at',{ascending:false}),
+      sb.from('fresco_products').select('*').order('nombre')
     ]);
     const byId={}; (profs||[]).forEach(p=>byId[p.id]=p);
     const latestSub={}; (subs||[]).forEach(s=>{if(!latestSub[s.user_id])latestSub[s.user_id]=s;});
@@ -292,7 +292,7 @@ async function checkLogin(){
   try{
     const {data:d,error}=await sb.auth.signInWithPassword({email:ph+'@codabas.app',password:pw});
     if(error||!d||!d.user){err.textContent='Celular o contraseña incorrectos.';return;}
-    const {data:prof}=await sb.from('profiles').select('role').eq('id',d.user.id).maybeSingle();
+    const {data:prof}=await sb.from('fresco_profiles').select('role').eq('id',d.user.id).maybeSingle();
     if(!prof||prof.role!=='manager'){ await sb.auth.signOut(); err.textContent='Esta cuenta no es de gestor.'; return; }
     boot();
   }catch(e){err.textContent='Error de conexión. Intenta de nuevo.';}
@@ -303,7 +303,7 @@ async function initDash(){
   try{
     const {data:{session}}=await sb.auth.getSession();
     if(session&&session.user){
-      const {data:prof}=await sb.from('profiles').select('role').eq('id',session.user.id).maybeSingle();
+      const {data:prof}=await sb.from('fresco_profiles').select('role').eq('id',session.user.id).maybeSingle();
       if(prof&&prof.role==='manager'){ boot(); }
     }
   }catch(e){console.warn('initDash:',e);}
@@ -542,11 +542,11 @@ function vCatalogo(){
   </div>`;}).join('')}`;
 }
 function ensureCat(){if(!data.catalog||!Object.keys(data.catalog).length){data.catalog={};Object.keys(DEFAULT_CAT).forEach(c=>{data.catalog[c]=DEFAULT_CAT[c].map(p=>({n:p.n,u:p.u,off:false}));});DB.save(data);}}
-async function addProduct(){const c=$('ap-cat').value,n=$('ap-name').value.trim(),u=$('ap-unit').value;if(!n){alert('Escribe el nombre del producto.');return;}if((data.catalog[c]||[]).some(p=>p.n.toLowerCase()===n.toLowerCase())){alert('Ese producto ya existe en la categoría.');return;}try{await sb.from('products').insert({categoria:c,nombre:n,unidad:u,activo:true});}catch(e){alert('No se pudo agregar el producto.');return;}await refresh();}
+async function addProduct(){const c=$('ap-cat').value,n=$('ap-name').value.trim(),u=$('ap-unit').value;if(!n){alert('Escribe el nombre del producto.');return;}if((data.catalog[c]||[]).some(p=>p.n.toLowerCase()===n.toLowerCase())){alert('Ese producto ya existe en la categoría.');return;}try{await sb.from('fresco_products').insert({categoria:c,nombre:n,unidad:u,activo:true});}catch(e){alert('No se pudo agregar el producto.');return;}await refresh();}
 function addCategory(){const c=$('ap-newcat').value.trim();if(!c){alert('Escribe el nombre de la categoría.');return;}if(data.catalog[c]){alert('Esa categoría ya existe.');return;}data.catalog[c]=[];render();/* se guarda en Supabase al agregarle el primer producto */}
-async function removeCategory(ci){const c=Object.keys(data.catalog)[ci];if(!c)return;if(!confirm('¿Eliminar la categoría "'+c+'" y todos sus productos?'))return;try{await sb.from('products').delete().eq('categoria',c);}catch(e){alert('No se pudo eliminar la categoría.');return;}delete data.catalog[c];await refresh();}
-async function removeProduct(ci,pi){const c=Object.keys(data.catalog)[ci];if(!c)return;const p=data.catalog[c][pi];if(!p)return;if(!confirm('¿Quitar este producto?'))return;if(p.id){try{await sb.from('products').delete().eq('id',p.id);}catch(e){alert('No se pudo quitar el producto.');return;}}await refresh();}
-async function toggleProduct(ci,pi){const c=Object.keys(data.catalog)[ci];if(!c)return;const p=data.catalog[c][pi];if(!p||!p.id)return;try{await sb.from('products').update({activo:p.off}).eq('id',p.id);}catch(e){alert('No se pudo actualizar.');return;}await refresh();}
+async function removeCategory(ci){const c=Object.keys(data.catalog)[ci];if(!c)return;if(!confirm('¿Eliminar la categoría "'+c+'" y todos sus productos?'))return;try{await sb.from('fresco_products').delete().eq('categoria',c);}catch(e){alert('No se pudo eliminar la categoría.');return;}delete data.catalog[c];await refresh();}
+async function removeProduct(ci,pi){const c=Object.keys(data.catalog)[ci];if(!c)return;const p=data.catalog[c][pi];if(!p)return;if(!confirm('¿Quitar este producto?'))return;if(p.id){try{await sb.from('fresco_products').delete().eq('id',p.id);}catch(e){alert('No se pudo quitar el producto.');return;}}await refresh();}
+async function toggleProduct(ci,pi){const c=Object.keys(data.catalog)[ci];if(!c)return;const p=data.catalog[c][pi];if(!p||!p.id)return;try{await sb.from('fresco_products').update({activo:p.off}).eq('id',p.id);}catch(e){alert('No se pudo actualizar.');return;}await refresh();}
 
 /* ============================================================
    FOTOS DE PRODUCTOS — carga masiva e individual a Supabase Storage
@@ -572,10 +572,10 @@ function matchProduct(filename){
 async function uploadOneProduct(p,file){
   const blob=await fileToJpeg(file,900,0.82);
   const path='prod-'+p.id+'.jpg';
-  const {error}=await sb.storage.from('productos').upload(path,blob,{upsert:true,contentType:'image/jpeg'});
+  const {error}=await sb.storage.from('fresco-productos').upload(path,blob,{upsert:true,contentType:'image/jpeg'});
   if(error) throw error;
-  const {data:pub}=sb.storage.from('productos').getPublicUrl(path);
-  await sb.from('products').update({image_url:pub.publicUrl+'?t='+Date.now()}).eq('id',p.id);
+  const {data:pub}=sb.storage.from('fresco-productos').getPublicUrl(path);
+  await sb.from('fresco_products').update({image_url:pub.publicUrl+'?t='+Date.now()}).eq('id',p.id);
 }
 async function singleUpload(id){
   const fi=$('pimg-'+id); const f=fi&&fi.files&&fi.files[0]; if(!f)return;
@@ -635,11 +635,11 @@ async function doQuote(id){
   try{
     const blob=await fileToJpeg(file);
     const path='factura-'+id+'.jpg';
-    const {error:upErr}=await sb.storage.from('facturas').upload(path,blob,{upsert:true,contentType:'image/jpeg'});
+    const {error:upErr}=await sb.storage.from('fresco-facturas').upload(path,blob,{upsert:true,contentType:'image/jpeg'});
     if(upErr) throw upErr;
-    const {data:pub}=sb.storage.from('facturas').getPublicUrl(path);
+    const {data:pub}=sb.storage.from('fresco-facturas').getPublicUrl(path);
     const facturaUrl=pub.publicUrl+'?t='+Date.now();   // evita que el navegador muestre una foto vieja en caché
-    await sb.from('orders').update({total_quoted:price,napa:napa||'Sorpresa de la casa',factura_url:facturaUrl,status:'cotizado'}).eq('id',id);
+    await sb.from('fresco_orders').update({total_quoted:price,napa:napa||'Sorpresa de la casa',factura_url:facturaUrl,status:'cotizado'}).eq('id',id);
     delete napaSel[id];
   }catch(e){
     console.warn('cotizar:',e);
@@ -649,14 +649,14 @@ async function doQuote(id){
   }
   await refresh();
 }
-async function approve(id){ try{await sb.from('orders').update({status:'en_curso'}).eq('id',id);}catch(e){alert('No se pudo aprobar.');return;} await refresh(); }
-async function deliver(id){ try{await sb.from('orders').update({status:'entregado'}).eq('id',id);}catch(e){alert('No se pudo marcar entregado.');return;} await refresh(); }
+async function approve(id){ try{await sb.from('fresco_orders').update({status:'en_curso'}).eq('id',id);}catch(e){alert('No se pudo aprobar.');return;} await refresh(); }
+async function deliver(id){ try{await sb.from('fresco_orders').update({status:'entregado'}).eq('id',id);}catch(e){alert('No se pudo marcar entregado.');return;} await refresh(); }
 async function activateSub(ph){
   const u=data.users[ph]; if(!u)return;
   const now=new Date(); const exp=new Date(now.getTime()+365*24*3600*1000);
   try{
     if(u.sub&&u.sub.id){
-      await sb.from('subscriptions').update({status:'activa',starts_at:now.toISOString(),expires_at:exp.toISOString()}).eq('id',u.sub.id);
+      await sb.from('fresco_subscriptions').update({status:'activa',starts_at:now.toISOString(),expires_at:exp.toISOString()}).eq('id',u.sub.id);
     }else{
       alert('Esta persona no tiene un pago de membresía pendiente.'); return;
     }

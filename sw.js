@@ -1,8 +1,8 @@
-/* De CODABAS a tu Casa — Service Worker
+/* Fresco a tu Casa — Service Worker
    Estrategia: network-first (datos siempre frescos), con respaldo en caché
    si la red se cae. Nunca cachea las llamadas a Supabase (para no mostrar
    datos viejos de pedidos, catálogo, etc.). */
-const CACHE = 'codabas-v2';
+const CACHE = 'fresco-v3';
 const SHELL = ['./', './index.html', './dashboard.html', './manifest.webmanifest', './manifest-admin.webmanifest', './icon-192.png', './icon-512.png', './icon-admin-192.png', './icon-admin-512.png'];
 
 self.addEventListener('install', e => {
