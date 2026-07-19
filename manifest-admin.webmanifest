@@ -1,6 +1,6 @@
 {
-  "name": "Panel · De CODABAS a tu Casa",
-  "short_name": "Panel CODABAS",
+  "name": "Panel · Fresco a tu Casa",
+  "short_name": "Panel Fresco",
   "description": "Panel del gestor — pedidos, cotizaciones, entregas y catálogo",
   "start_url": "./dashboard.html",
   "scope": "./",

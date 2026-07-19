@@ -1,7 +1,7 @@
 {
-  "name": "De CODABAS a tu Casa",
-  "short_name": "CODABAS",
-  "description": "Tu mercado fresco a domicilio desde CODABAS",
+  "name": "Fresco a tu Casa",
+  "short_name": "Fresco",
+  "description": "Tu mercado fresco a domicilio, de la plaza a tu casa",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
