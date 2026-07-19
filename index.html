@@ -112,7 +112,9 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--g)}
 .tiny{font-size:11px;color:var(--tl)}
 a.link{color:var(--g);font-weight:700;text-decoration:none}
 .divider{height:1px;background:var(--bd);margin:14px 0}
-.hdr .logo img{width:100%;height:100%;object-fit:cover;border-radius:10px}
+.hdr .logo img{width:100%;height:100%;object-fit:contain;border-radius:10px}
+.homelogo{width:150px;height:150px;border-radius:26px;box-shadow:var(--shadow);object-fit:contain;background:#fff}
+@media(min-width:600px){.homelogo{width:210px;height:210px}}
 .pr{font-size:12.5px;color:var(--tl);margin:2px 0;transition:.12s}
 .pr::before{content:'○ '}
 .pr.ok{color:var(--ok)} .pr.ok::before{content:'✓ '}
@@ -357,7 +359,7 @@ function authScreen(){
       <div><h2 class="brand"><span class="c2">Fresco</span> <span class="c3">a tu Casa</span></h2>
       <small>Mercado fresco a tu casa</small></div></div>
     <div class="wrap">
-      <div class="center" style="margin:6px 0 14px"><img src="${LOGO}" alt="Fresco a tu Casa" style="width:150px;height:150px;border-radius:26px;box-shadow:var(--shadow)"></div>
+      <div class="center" style="margin:6px 0 14px"><img src="${LOGO}" alt="Fresco a tu Casa" class="homelogo"></div>
       <div class="tabs">
         <button class="${S.authTab==='login'?'on':''}" data-tab="login">Iniciar sesión</button>
         <button class="${S.authTab==='register'?'on':''}" data-tab="register">Registrarme</button>
