@@ -2,7 +2,7 @@
    Estrategia: network-first (datos siempre frescos), con respaldo en caché
    si la red se cae. Nunca cachea las llamadas a Supabase (para no mostrar
    datos viejos de pedidos, catálogo, etc.). */
-const CACHE = 'fresco-v6';
+const CACHE = 'fresco-v7';
 const SHELL = ['./', './index.html', './dashboard.html', './manifest.webmanifest', './manifest-admin.webmanifest', './icon-192.png', './icon-512.png', './icon-admin-192.png', './icon-admin-512.png'];
 
 self.addEventListener('install', e => {
